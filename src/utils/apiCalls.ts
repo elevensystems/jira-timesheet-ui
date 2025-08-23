@@ -1,9 +1,18 @@
 import axios from 'axios';
 
+interface Ticket {
+  id?: string; // For UI tracking only, not needed for API
+  typeOfWork: 'Create' | 'In-progress' | 'Done';
+  description: string;
+  timeSpend: number;
+  ticketId: string;
+}
+
 interface TimesheetData {
   userId: string;
   jiraToken: string;
   dates: string[];
+  tickets?: Ticket[];
 }
 
 export async function submitTimesheet(

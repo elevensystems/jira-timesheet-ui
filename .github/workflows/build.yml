@@ -27,8 +27,36 @@ jobs:
       - name: Build the project
         run: npm run build
 
-      - name: Upload exported files as artifact
-        uses: actions/upload-artifact@v4
+      # Configure AWS credentials using access keys stored as repo secrets
+      - name: Configure AWS credentials (access keys)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          name: jira-timesheet-site-out
-          path: out
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Sync the exported site to S3. Provide S3 bucket via repository variable VARS.S3_BUCKET.
+      - name: Upload static export to S3
+        env:
+          S3_BUCKET: ${{ vars.S3_BUCKET }}
+        run: |
+          if [ ! -d out ]; then
+            echo "out directory not found" >&2
+            exit 1
+          fi
+          if [ -z "$S3_BUCKET" ]; then
+            echo "S3_BUCKET repository variable is not set" >&2
+            exit 1
+          fi
+          aws s3 sync ./out "s3://${S3_BUCKET}/" --delete
+
+      # Invalidate CloudFront cache to ensure users get the latest content
+      - name: Invalidate CloudFront cache
+        env:
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+        run: |
+          if [ -z "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
+            echo "CLOUDFRONT_DISTRIBUTION_ID repository variable is not set" >&2
+            exit 1
+          fi
+          aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"
