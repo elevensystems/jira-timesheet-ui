@@ -11,16 +11,19 @@ interface Ticket {
 interface TimesheetData {
   userId: string;
   jiraToken: string;
-  dates: string[];
+  dates: string;
   tickets?: Ticket[];
 }
+
+const API_ENDPOINT = process.env.NEXT_PUBLIC_API_URL;
 
 export async function submitTimesheet(
   data: TimesheetData
 ): Promise<{ success: boolean; message: string; submittedDates?: string[] }> {
   try {
-    // This is a placeholder API endpoint. Replace with your actual endpoint.
-    const response = await axios.post('/api/timesheet', data);
+    // Get API URL from environment variable and construct the endpoint
+    const apiUrl = `${API_ENDPOINT}/timesheet`;
+    const response = await axios.post(apiUrl, data);
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {

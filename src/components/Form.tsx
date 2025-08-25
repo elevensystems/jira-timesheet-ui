@@ -158,13 +158,11 @@ const Form: React.FC = () => {
         throw new Error('Please add at least one ticket');
       }
 
-      const dateArray = dates.split(',').map(date => date.trim());
-
       // Submit timesheet with tickets
       await submitTimesheet({
         userId,
         jiraToken,
-        dates: dateArray,
+        dates,
         tickets: tickets.map(ticket => ({
           typeOfWork: ticket.typeOfWork,
           description: ticket.description,
