@@ -25,6 +25,8 @@ jobs:
         run: npm ci
 
       - name: Build the project
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
         run: npm run build
 
       # Configure AWS credentials using access keys stored as repo secrets
