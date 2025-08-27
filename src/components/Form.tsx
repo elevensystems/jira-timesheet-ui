@@ -2,18 +2,17 @@
 
 import React, { useMemo, useState } from 'react';
 
-import Image from 'next/image';
-
 import {
   BookOpen,
   CheckCircle,
+  CircleCheckBig,
   Eye,
   FileText,
   Pencil,
   Trash2,
 } from 'lucide-react';
+import { ZodError, z } from 'zod';
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -36,6 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { toast } from '@/components/ui/sonner';
 import {
   Table,
   TableBody,
@@ -56,6 +56,50 @@ import {
   sanitizeToken,
 } from '@/utils/sanitize';
 
+// Zod v4 schemas
+const Step1Schema = z.object({
+  username: z
+    .string()
+    .min(1, 'Username is required')
+    .max(128, 'Username too long'),
+  token: z.string().min(1, 'Jira Token is required').max(256, 'Token too long'),
+});
+
+const TicketSchema = z.object({
+  id: z.string().optional().default(''),
+  typeOfWork: z.enum(['Create', 'Review', 'Study']),
+  description: z.string().min(1, 'Description is required').max(1000),
+  timeSpend: z.number().min(0.25, 'Min 0.25 hour').max(8, 'Max 8 hours'),
+  ticketId: z.string().min(1, 'Ticket ID is required').max(128),
+});
+
+const DatesSchema = z
+  .string()
+  .min(1, 'Dates are required')
+  .refine((val: string) => isValidDatesList(val), {
+    message: 'Dates must be in format: 20/Aug/25, 21/Aug/25, 22/Aug/25',
+  });
+
+const SubmitPayloadSchema = z.object({
+  username: Step1Schema.shape.username,
+  token: Step1Schema.shape.token,
+  dates: DatesSchema,
+  tickets: z.array(TicketSchema).min(1, 'Please add at least one ticket'),
+});
+
+// removed global error messaging helper
+
+function zodToFieldErrors(err: unknown, defaultKey?: string) {
+  const result: Record<string, string> = {};
+  if (err instanceof ZodError) {
+    for (const issue of err.issues) {
+      const key = (issue.path[0] as string | undefined) ?? defaultKey;
+      if (key) result[key] = issue.message;
+    }
+  }
+  return result;
+}
+
 interface Ticket {
   id: string;
   typeOfWork: 'Create' | 'Review' | 'Study';
@@ -67,8 +111,8 @@ interface Ticket {
 const Form: React.FC = () => {
   // steps: 1=Setup, 2=Log Ticket, 3=Review, 4=Success
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const [userId, setUserId] = useState('');
-  const [jiraToken, setJiraToken] = useState('');
+  const [username, setUsername] = useState('');
+  const [token, setToken] = useState('');
   const [dates, setDates] = useState('');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [currentTicket, setCurrentTicket] = useState<Ticket>({
@@ -79,7 +123,7 @@ const Form: React.FC = () => {
     ticketId: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   // success message is shown via dialog and success screen
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState('');
@@ -92,19 +136,33 @@ const Form: React.FC = () => {
   };
 
   const handleAddTicket = () => {
-    if (!currentTicket.ticketId.trim()) {
-      setError('Ticket ID is required');
-      return;
-    }
+    // sanitize inputs
+    const sanitized = {
+      id: '',
+      typeOfWork: currentTicket.typeOfWork,
+      description: sanitizeDescription(currentTicket.description),
+      timeSpend: sanitizeHours(currentTicket.timeSpend),
+      ticketId: sanitizeTicketId(currentTicket.ticketId),
+    } as const;
 
-    if (!currentTicket.description.trim()) {
-      setError('Description is required');
+    try {
+      TicketSchema.parse(sanitized);
+      setFieldErrors(prev => {
+        const next = { ...prev } as Record<string, string>;
+        delete next.ticketId;
+        delete next.description;
+        delete next.timeSpend;
+        delete next.typeOfWork;
+        return next;
+      });
+    } catch (e) {
+      setFieldErrors(prev => ({ ...prev, ...zodToFieldErrors(e) }));
       return;
     }
 
     // Generate a unique ID for this ticket for tracking in the UI
     const newTicket = {
-      ...currentTicket,
+      ...sanitized,
       id: Date.now().toString(),
     };
 
@@ -116,7 +174,6 @@ const Form: React.FC = () => {
       timeSpend: 0.25,
       ticketId: '',
     });
-    setError(null);
   };
 
   const handleRemoveTicket = (id: string) => {
@@ -125,24 +182,25 @@ const Form: React.FC = () => {
 
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
 
-    // Validate first step inputs
-    const safeUser = sanitizeAccount(userId);
-    const safeToken = sanitizeToken(jiraToken);
-    setUserId(safeUser);
-    setJiraToken(safeToken);
+    // Validate first step inputs using Zod
+    const safeUser = sanitizeAccount(username);
+    const safeToken = sanitizeToken(token);
 
-    if (!safeUser.trim()) {
-      setError('User ID is required');
-      return;
+    try {
+      Step1Schema.parse({ username: safeUser, token: safeToken });
+      setUsername(safeUser);
+      setToken(safeToken);
+      setFieldErrors(prev => {
+        const next = { ...prev } as Record<string, string>;
+        delete next.username;
+        delete next.token;
+        return next;
+      });
+      setStep(2);
+    } catch (e) {
+      setFieldErrors(prev => ({ ...prev, ...zodToFieldErrors(e) }));
     }
-
-    if (!safeToken.trim()) {
-      setError('Jira Token is required');
-      return;
-    }
-    setStep(2);
   };
 
   // no-op back handler removed in this flow version
@@ -150,41 +208,45 @@ const Form: React.FC = () => {
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault?.();
     setIsSubmitting(true);
-    setError(null);
 
     try {
-      if (tickets.length === 0) {
-        throw new Error('Please add at least one ticket');
-      }
-
       const safeDates = sanitizeDates(dates);
-      if (!safeDates.trim() || !isValidDatesList(safeDates)) {
-        throw new Error(
-          'Dates must be in format: 20/Aug/25, 21/Aug/25, 22/Aug/25'
-        );
-      }
+      const sanitizedTickets = tickets.map(t => ({
+        id: t.id,
+        typeOfWork: t.typeOfWork,
+        description: sanitizeDescription(t.description),
+        timeSpend: sanitizeHours(t.timeSpend),
+        ticketId: sanitizeTicketId(t.ticketId),
+      }));
+
+      const payload = {
+        username: sanitizeAccount(username),
+        token: sanitizeToken(token),
+        dates: safeDates,
+        tickets: sanitizedTickets,
+      };
+
+      SubmitPayloadSchema.parse(payload);
 
       // Submit timesheet with tickets
       await submitTimesheet({
-        userId: sanitizeAccount(userId),
-        jiraToken: sanitizeToken(jiraToken),
-        dates: safeDates,
-        tickets: tickets.map(ticket => ({
-          typeOfWork: ticket.typeOfWork,
-          description: sanitizeDescription(ticket.description),
-          timeSpend: sanitizeHours(ticket.timeSpend),
-          ticketId: sanitizeTicketId(ticket.ticketId),
+        username: payload.username,
+        token: payload.token,
+        dates: payload.dates,
+        tickets: payload.tickets.map(t => ({
+          typeOfWork: t.typeOfWork,
+          description: t.description,
+          timeSpend: t.timeSpend,
+          ticketId: t.ticketId,
         })),
       });
 
       showMessageDialog('Success', 'Timesheet submitted successfully!');
       setStep(4);
     } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : 'An error occurred. Please try again.';
-      setError(errorMessage);
+      setFieldErrors(prev => ({ ...prev, ...zodToFieldErrors(err) }));
+      const message = err instanceof Error ? err.message : 'Submission failed.';
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -199,7 +261,7 @@ const Form: React.FC = () => {
     <Card className='max-w-4xl mx-auto mt-4'>
       <CardHeader>
         <Tabs value={step.toString()} className='w-full'>
-          <TabsList className='grid w-full grid-cols-3 bg-purple-50'>
+          <TabsList className='grid w-full grid-cols-3'>
             <TabsTrigger value='1'>
               <Pencil className='mr-2 h-4 w-4' /> Setup
             </TabsTrigger>
@@ -213,25 +275,50 @@ const Form: React.FC = () => {
         </Tabs>
       </CardHeader>
       <CardContent>
-        {error && (
-          <Alert variant='destructive' className='mb-4'>
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
         {/* Flow 1: Setup */}
         {step === 1 && (
           <form onSubmit={handleNext} className='space-y-6'>
             <div className='space-y-1'>
-              <Label className='font-semibold'>FPT account</Label>
+              <Label
+                className={
+                  fieldErrors.username
+                    ? 'font-semibold text-destructive'
+                    : 'font-semibold'
+                }
+              >
+                FPT account
+              </Label>
               <Input
                 placeholder='Insert your FPT account (E.g., ThaoLNP5)'
-                value={userId}
-                onChange={e => setUserId(sanitizeAccount(e.target.value))}
+                value={username}
+                aria-invalid={fieldErrors.username ? true : undefined}
+                onChange={e => {
+                  setUsername(sanitizeAccount(e.target.value));
+                  if (fieldErrors.username) {
+                    setFieldErrors(prev => {
+                      const next = { ...prev } as Record<string, string>;
+                      delete next.username;
+                      return next;
+                    });
+                  }
+                }}
               />
+              {fieldErrors.username && (
+                <p className='text-sm text-destructive mt-1'>
+                  {fieldErrors.username}
+                </p>
+              )}
             </div>
             <div className='space-y-1'>
-              <Label className='font-semibold'>Jira Token</Label>
+              <Label
+                className={
+                  fieldErrors.token
+                    ? 'font-semibold text-destructive'
+                    : 'font-semibold'
+                }
+              >
+                Jira Token
+              </Label>
               <div className='text-sm text-muted-foreground'>
                 Click{' '}
                 <a
@@ -247,9 +334,24 @@ const Form: React.FC = () => {
               <Input
                 type='password'
                 placeholder='Insert your jira token'
-                value={jiraToken}
-                onChange={e => setJiraToken(sanitizeToken(e.target.value))}
+                value={token}
+                aria-invalid={fieldErrors.token ? true : undefined}
+                onChange={e => {
+                  setToken(sanitizeToken(e.target.value));
+                  if (fieldErrors.token) {
+                    setFieldErrors(prev => {
+                      const next = { ...prev } as Record<string, string>;
+                      delete next.token;
+                      return next;
+                    });
+                  }
+                }}
               />
+              {fieldErrors.token && (
+                <p className='text-sm text-destructive mt-1'>
+                  {fieldErrors.token}
+                </p>
+              )}
             </div>
             <div className='flex justify-end'>
               <Button type='submit' className='w-40'>
@@ -263,7 +365,15 @@ const Form: React.FC = () => {
         {step === 2 && (
           <div className='space-y-6'>
             <div className='space-y-1'>
-              <Label className='font-semibold'>Your Worklog Dates</Label>
+              <Label
+                className={
+                  fieldErrors.dates
+                    ? 'font-semibold text-destructive'
+                    : 'font-semibold'
+                }
+              >
+                Your Worklog Dates
+              </Label>
               <ol className='text-sm text-muted-foreground pl-4 list-decimal space-y-1'>
                 <li>Click on your Jira Project → Project worklog</li>
                 <li>
@@ -273,39 +383,92 @@ const Form: React.FC = () => {
                 <li>Copy your missing work log dates</li>
               </ol>
               <textarea
-                className='flex h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm'
+                className={`flex h-20 w-full rounded-md border bg-background px-3 py-2 text-sm ${fieldErrors.dates ? 'border-destructive' : 'border-input'}`}
                 placeholder='E.g., 20/Aug/25, 21/Aug/25, 22/Aug/25, 25/Aug/25'
                 value={dates}
-                onChange={e => setDates(sanitizeDates(e.target.value))}
+                aria-invalid={fieldErrors.dates ? true : undefined}
+                onChange={e => {
+                  setDates(sanitizeDates(e.target.value));
+                  if (fieldErrors.dates) {
+                    setFieldErrors(prev => {
+                      const next = { ...prev } as Record<string, string>;
+                      delete next.dates;
+                      return next;
+                    });
+                  }
+                }}
               />
+              {fieldErrors.dates && (
+                <p className='text-sm text-destructive mt-1'>
+                  {fieldErrors.dates}
+                </p>
+              )}
             </div>
             <div className='grid gap-4 md:grid-cols-2'>
               <div className='space-y-1'>
-                <Label className='font-semibold'>Ticket ID</Label>
+                <Label
+                  className={
+                    fieldErrors.ticketId
+                      ? 'font-semibold text-destructive'
+                      : 'font-semibold'
+                  }
+                >
+                  Ticket ID
+                </Label>
                 <Input
                   placeholder='Enter Jira Ticket (E.g., C99KBBATC2025-37)'
                   value={currentTicket.ticketId}
-                  onChange={e =>
+                  aria-invalid={fieldErrors.ticketId ? true : undefined}
+                  onChange={e => {
                     setCurrentTicket({
                       ...currentTicket,
                       ticketId: sanitizeTicketId(e.target.value),
-                    })
-                  }
+                    });
+                    if (fieldErrors.ticketId) {
+                      setFieldErrors(prev => {
+                        const next = { ...prev } as Record<string, string>;
+                        delete next.ticketId;
+                        return next;
+                      });
+                    }
+                  }}
                 />
+                {fieldErrors.ticketId && (
+                  <p className='text-sm text-destructive mt-1'>
+                    {fieldErrors.ticketId}
+                  </p>
+                )}
               </div>
               <div className='grid grid-cols-2 gap-4'>
                 <div className='space-y-1'>
-                  <Label className='font-semibold'>Type of work</Label>
+                  <Label
+                    className={
+                      fieldErrors.typeOfWork
+                        ? 'font-semibold text-destructive'
+                        : 'font-semibold'
+                    }
+                  >
+                    Type of work
+                  </Label>
                   <Select
                     value={currentTicket.typeOfWork}
-                    onValueChange={v =>
+                    onValueChange={v => {
                       setCurrentTicket({
                         ...currentTicket,
                         typeOfWork: v as Ticket['typeOfWork'],
-                      })
-                    }
+                      });
+                      if (fieldErrors.typeOfWork) {
+                        setFieldErrors(prev => {
+                          const next = { ...prev } as Record<string, string>;
+                          delete next.typeOfWork;
+                          return next;
+                        });
+                      }
+                    }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger
+                      aria-invalid={fieldErrors.typeOfWork ? true : undefined}
+                    >
                       <SelectValue placeholder='Select 1 item' />
                     </SelectTrigger>
                     <SelectContent>
@@ -333,38 +496,81 @@ const Form: React.FC = () => {
                   </Select>
                 </div>
                 <div className='space-y-1'>
-                  <Label className='font-semibold'>Time Spent (hrs)</Label>
+                  <Label
+                    className={
+                      fieldErrors.timeSpend
+                        ? 'font-semibold text-destructive'
+                        : 'font-semibold'
+                    }
+                  >
+                    Time Spent (hrs)
+                  </Label>
                   <Input
                     type='number'
                     step='0.25'
                     min='0.25'
                     value={currentTicket.timeSpend}
-                    onChange={e =>
+                    aria-invalid={fieldErrors.timeSpend ? true : undefined}
+                    onChange={e => {
                       setCurrentTicket({
                         ...currentTicket,
                         timeSpend: sanitizeHours(e.target.value),
-                      })
-                    }
+                      });
+                      if (fieldErrors.timeSpend) {
+                        setFieldErrors(prev => {
+                          const next = { ...prev } as Record<string, string>;
+                          delete next.timeSpend;
+                          return next;
+                        });
+                      }
+                    }}
                   />
+                  {fieldErrors.timeSpend && (
+                    <p className='text-sm text-destructive mt-1'>
+                      {fieldErrors.timeSpend}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
             <div className='space-y-1'>
-              <Label className='font-semibold'>Description</Label>
+              <Label
+                className={
+                  fieldErrors.description
+                    ? 'font-semibold text-destructive'
+                    : 'font-semibold'
+                }
+              >
+                Description
+              </Label>
               <textarea
-                className='flex h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm'
+                className={`flex h-24 w-full rounded-md border bg-background px-3 py-2 text-sm ${fieldErrors.description ? 'border-destructive' : 'border-input'}`}
                 placeholder="Copy Jira Ticket 's description (E.g., Create project plan, do project report...)"
                 value={currentTicket.description}
-                onChange={e =>
+                aria-invalid={fieldErrors.description ? true : undefined}
+                onChange={e => {
                   setCurrentTicket({
                     ...currentTicket,
                     description: sanitizeDescription(e.target.value),
-                  })
-                }
+                  });
+                  if (fieldErrors.description) {
+                    setFieldErrors(prev => {
+                      const next = { ...prev } as Record<string, string>;
+                      delete next.description;
+                      return next;
+                    });
+                  }
+                }}
               />
+              {fieldErrors.description && (
+                <p className='text-sm text-destructive mt-1'>
+                  {fieldErrors.description}
+                </p>
+              )}
             </div>
             <div className='flex justify-center'>
               <Button
+                className='hover:bg-green-200'
                 type='button'
                 variant='secondary'
                 onClick={handleAddTicket}
@@ -391,7 +597,7 @@ const Form: React.FC = () => {
                   </h3>
                   <div className='border rounded-lg'>
                     <Table>
-                      <TableHeader>
+                      <TableHeader className='bg-muted'>
                         <TableRow>
                           <TableHead>Status</TableHead>
                           <TableHead>Ticket ID</TableHead>
@@ -429,6 +635,7 @@ const Form: React.FC = () => {
                             </TableCell>
                             <TableCell className='text-right'>
                               <Button
+                                className='hover:bg-red-200'
                                 variant='ghost'
                                 size='icon'
                                 onClick={() => handleRemoveTicket(ticket.id)}
@@ -452,20 +659,22 @@ const Form: React.FC = () => {
                     </Button>
                     <Button
                       onClick={() => {
-                        const safeDates = sanitizeDates(dates);
-                        setDates(safeDates);
-                        if (!safeDates.trim()) {
-                          setError('Dates are required');
-                          return;
+                        const safe = sanitizeDates(dates);
+                        setDates(safe);
+                        try {
+                          DatesSchema.parse(safe);
+                          setFieldErrors(prev => {
+                            const next = { ...prev } as Record<string, string>;
+                            delete next.dates;
+                            return next;
+                          });
+                          setStep(3);
+                        } catch (e) {
+                          setFieldErrors(prev => ({
+                            ...prev,
+                            ...zodToFieldErrors(e, 'dates'),
+                          }));
                         }
-                        if (!isValidDatesList(safeDates)) {
-                          setError(
-                            'Dates must be in format: 20/Aug/25, 21/Aug/25, ...'
-                          );
-                          return;
-                        }
-                        setError(null);
-                        setStep(3);
                       }}
                       className='w-40'
                     >
@@ -495,7 +704,7 @@ const Form: React.FC = () => {
             <div>
               <div className='border rounded-lg'>
                 <Table>
-                  <TableHeader>
+                  <TableHeader className='bg-muted'>
                     <TableRow>
                       <TableHead>Status</TableHead>
                       <TableHead>Ticket ID</TableHead>
@@ -533,6 +742,7 @@ const Form: React.FC = () => {
                         </TableCell>
                         <TableCell className='text-right'>
                           <Button
+                            className='hover:bg-red-200'
                             variant='ghost'
                             size='icon'
                             onClick={() => handleRemoveTicket(ticket.id)}
@@ -554,6 +764,7 @@ const Form: React.FC = () => {
                     Back
                   </Button>
                   <Button
+                    className='w-40'
                     disabled={tickets.length === 0 || isSubmitting}
                     onClick={() => handleSubmit()}
                   >
@@ -568,19 +779,14 @@ const Form: React.FC = () => {
         {/* Success screen */}
         {step === 4 && (
           <div className='flex flex-col items-center justify-center py-16'>
-            <Image
-              alt=''
-              src='/vercel.svg'
-              width={128}
-              height={128}
-              className='opacity-80 mb-6'
-            />
+            <CircleCheckBig className='w-24 h-24' />
+            <br />
             <p className='text-lg font-medium'>Successfully Added !</p>
             <div className='mt-6'>
               <Button
                 onClick={() => {
-                  setUserId('');
-                  setJiraToken('');
+                  setUsername('');
+                  setToken('');
                   setDates('');
                   setTickets([]);
                   setStep(1);

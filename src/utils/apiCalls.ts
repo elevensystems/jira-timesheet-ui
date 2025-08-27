@@ -9,8 +9,8 @@ interface Ticket {
 }
 
 interface TimesheetData {
-  userId: string;
-  jiraToken: string;
+  username: string;
+  token: string;
   dates: string;
   tickets?: Ticket[];
 }
