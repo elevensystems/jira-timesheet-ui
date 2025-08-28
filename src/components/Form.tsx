@@ -467,6 +467,7 @@ const Form: React.FC = () => {
                     }}
                   >
                     <SelectTrigger
+                      className='w-full'
                       aria-invalid={fieldErrors.typeOfWork ? true : undefined}
                     >
                       <SelectValue placeholder='Select 1 item' />
