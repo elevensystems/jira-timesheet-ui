@@ -59,14 +59,13 @@ export function sanitizeDescription(input: string, maxLen = 1000): string {
 
 export function sanitizeHours(
   input: string | number,
-  min = 0.25,
-  max = 8,
-  step = 0.25
+  min = 0.01,
+  max = 8
 ): number {
   const n = typeof input === 'number' ? input : parseFloat(input);
   if (Number.isNaN(n)) return min;
-  const clamped = Math.min(Math.max(n, min), max);
-  // round to nearest step
-  const rounded = Math.round(clamped / step) * step;
-  return Number(rounded.toFixed(2));
+  let v = Math.min(Math.max(n, min), max);
+  // restrict to 2 decimal places without unintended rounding issues
+  v = Math.trunc(v * 100) / 100;
+  return v;
 }

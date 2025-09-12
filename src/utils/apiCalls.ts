@@ -2,7 +2,7 @@ import axios from 'axios';
 
 interface Ticket {
   id?: string; // For UI tracking only, not needed for API
-  typeOfWork: 'Create' | 'Review' | 'Study' | 'In-progress' | 'Done';
+  typeOfWork: 'Create' | 'Review' | 'Study' | 'Correct' | 'Translate';
   description: string;
   timeSpend: number;
   ticketId: string;

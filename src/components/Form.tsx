@@ -8,8 +8,10 @@ import {
   CircleCheckBig,
   Eye,
   FileText,
+  Languages,
   Pencil,
   Trash2,
+  Undo2,
 } from 'lucide-react';
 import { ZodError, z } from 'zod';
 
@@ -65,20 +67,47 @@ const Step1Schema = z.object({
   token: z.string().min(1, 'Jira Token is required').max(256, 'Token too long'),
 });
 
+// Jira ticket format: uppercase alphanumerics + dash + number, e.g. C99KBBATC2025-37
+const JIRA_TICKET_REGEX = /^[A-Z0-9]+-\d+$/;
 const TicketSchema = z.object({
   id: z.string().optional().default(''),
-  typeOfWork: z.enum(['Create', 'Review', 'Study']),
+  typeOfWork: z.enum(['Create', 'Review', 'Study', 'Correct', 'Translate']),
   description: z.string().min(1, 'Description is required').max(1000),
-  timeSpend: z.number().min(0.25, 'Min 0.25 hour').max(8, 'Max 8 hours'),
-  ticketId: z.string().min(1, 'Ticket ID is required').max(128),
+  timeSpend: z
+    .number()
+    .gt(0, 'Time must be greater than 0')
+    .max(8, 'Max 8 hours')
+    .refine(v => /^\d+(\.\d{1,2})?$/.test(String(v)), {
+      message: 'Max 2 decimal places',
+    }),
+  ticketId: z
+    .string()
+    .min(1, 'Ticket ID is required')
+    .max(128, 'Ticket ID too long')
+    .regex(
+      JIRA_TICKET_REGEX,
+      'Ticket ID must match format ABC-123 (e.g., C99KBBATC2025-37)'
+    ),
 });
 
 const DatesSchema = z
   .string()
   .min(1, 'Dates are required')
+  .transform(s => s.trim())
   .refine((val: string) => isValidDatesList(val), {
     message: 'Dates must be in format: 20/Aug/25, 21/Aug/25, 22/Aug/25',
-  });
+  })
+  .refine(
+    (val: string) => {
+      const parts = val
+        .split(',')
+        .map(p => p.trim())
+        .filter(Boolean);
+      const uniq = new Set(parts.map(p => p.toUpperCase()));
+      return uniq.size === parts.length;
+    },
+    { message: 'Duplicate dates are not allowed' }
+  );
 
 const SubmitPayloadSchema = z.object({
   username: Step1Schema.shape.username,
@@ -102,11 +131,57 @@ function zodToFieldErrors(err: unknown, defaultKey?: string) {
 
 interface Ticket {
   id: string;
-  typeOfWork: 'Create' | 'Review' | 'Study';
+  typeOfWork: 'Create' | 'Review' | 'Study' | 'Correct' | 'Translate';
   description: string;
   timeSpend: number; // hours
   ticketId: string;
 }
+
+// Central definition of work type metadata
+const TYPE_OF_WORK_OPTIONS: Array<{
+  value: Ticket['typeOfWork'];
+  label: string;
+  icon: React.ReactNode;
+  badgeClass: string; // tailwind classes for badge background/text
+}> = [
+  {
+    value: 'Create',
+    label: 'Create',
+    icon: <Pencil className='h-4 w-4 text-muted-foreground' />,
+    badgeClass: 'bg-green-200 text-black',
+  },
+  {
+    value: 'Review',
+    label: 'Review',
+    icon: <Eye className='h-4 w-4 text-muted-foreground' />,
+    badgeClass: 'bg-red-200 text-black',
+  },
+  {
+    value: 'Study',
+    label: 'Study',
+    icon: <BookOpen className='h-4 w-4 text-muted-foreground' />,
+    badgeClass: 'bg-indigo-200 text-black',
+  },
+  {
+    value: 'Correct',
+    label: 'Correct',
+    icon: <Undo2 className='h-4 w-4 text-muted-foreground' />,
+    badgeClass: 'bg-yellow-200 text-black',
+  },
+  {
+    value: 'Translate',
+    label: 'Translate',
+    icon: <Languages className='h-4 w-4 text-muted-foreground' />,
+    badgeClass: 'bg-purple-200 text-black',
+  },
+];
+
+const workTypeMeta = TYPE_OF_WORK_OPTIONS.reduce<
+  Record<string, { badgeClass: string }>
+>((acc, cur) => {
+  acc[cur.value] = { badgeClass: cur.badgeClass };
+  return acc;
+}, {});
 
 const Form: React.FC = () => {
   // steps: 1=Setup, 2=Log Ticket, 3=Review, 4=Success
@@ -124,6 +199,7 @@ const Form: React.FC = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [hoursError, setHoursError] = useState<string>('');
   // success message is shown via dialog and success screen
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState('');
@@ -136,6 +212,7 @@ const Form: React.FC = () => {
   };
 
   const handleAddTicket = () => {
+    setHoursError('');
     // sanitize inputs
     const sanitized = {
       id: '',
@@ -166,7 +243,15 @@ const Form: React.FC = () => {
       id: Date.now().toString(),
     };
 
-    setTickets([...tickets, newTicket]);
+    const prospectiveTickets = [...tickets, newTicket];
+    const newTotal = prospectiveTickets.reduce((s, t) => s + t.timeSpend, 0);
+    if (newTotal > 8) {
+      setHoursError(
+        'Total hours per day cannot exceed 8.0 hrs. Please adjust your entries.'
+      );
+      return; // do not add
+    }
+    setTickets(prospectiveTickets);
     setCurrentTicket({
       id: '',
       typeOfWork: 'Create',
@@ -474,24 +559,14 @@ const Form: React.FC = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        <SelectItem value='Create'>
-                          <div className='flex items-center gap-2'>
-                            <Pencil className='h-4 w-4 text-muted-foreground' />
-                            <span>Create</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value='Review'>
-                          <div className='flex items-center gap-2'>
-                            <Eye className='h-4 w-4 text-muted-foreground' />
-                            <span>Review</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value='Study'>
-                          <div className='flex items-center gap-2'>
-                            <BookOpen className='h-4 w-4 text-muted-foreground' />
-                            <span>Study</span>
-                          </div>
-                        </SelectItem>
+                        {TYPE_OF_WORK_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            <div className='flex items-center gap-2'>
+                              {opt.icon}
+                              <span>{opt.label}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -508,8 +583,8 @@ const Form: React.FC = () => {
                   </Label>
                   <Input
                     type='number'
-                    step='0.25'
-                    min='0.25'
+                    step='0.01'
+                    min='0.01'
                     value={currentTicket.timeSpend}
                     aria-invalid={fieldErrors.timeSpend ? true : undefined}
                     onChange={e => {
@@ -615,11 +690,7 @@ const Form: React.FC = () => {
                             <TableCell>
                               <Badge
                                 className={
-                                  ticket.typeOfWork === 'Create'
-                                    ? 'bg-green-200 text-black'
-                                    : ticket.typeOfWork === 'Review'
-                                      ? 'bg-red-200 text-black'
-                                      : 'bg-indigo-200 text-black'
+                                  workTypeMeta[ticket.typeOfWork]?.badgeClass
                                 }
                               >
                                 {ticket.typeOfWork}
@@ -652,13 +723,20 @@ const Form: React.FC = () => {
                 </div>
                 <div className='flex justify-between items-center'>
                   <div className='text-sm text-muted-foreground'>
-                    {tickets.length} tickets . Total {totalHours} hrs/day
+                    {tickets.length} tickets . Total {totalHours.toFixed(2)}{' '}
+                    hrs/day
+                    {hoursError && (
+                      <span className='ml-2 text-destructive font-medium'>
+                        {hoursError}
+                      </span>
+                    )}
                   </div>
                   <div className='flex gap-2'>
                     <Button variant='outline' onClick={() => setStep(1)}>
                       Back
                     </Button>
                     <Button
+                      disabled={!!hoursError}
                       onClick={() => {
                         const safe = sanitizeDates(dates);
                         setDates(safe);
@@ -722,11 +800,7 @@ const Form: React.FC = () => {
                         <TableCell>
                           <Badge
                             className={
-                              ticket.typeOfWork === 'Create'
-                                ? 'bg-green-200 text-black'
-                                : ticket.typeOfWork === 'Review'
-                                  ? 'bg-red-200 text-black'
-                                  : 'bg-indigo-200 text-black'
+                              workTypeMeta[ticket.typeOfWork]?.badgeClass
                             }
                           >
                             {ticket.typeOfWork}
@@ -758,7 +832,13 @@ const Form: React.FC = () => {
               </div>
               <div className='flex justify-between items-center mt-4'>
                 <div className='text-sm text-muted-foreground'>
-                  {tickets.length} tickets . Total {totalHours} hrs/day
+                  {tickets.length} tickets . Total {totalHours.toFixed(2)}{' '}
+                  hrs/day
+                  {hoursError && (
+                    <span className='ml-2 text-destructive font-medium'>
+                      {hoursError}
+                    </span>
+                  )}
                 </div>
                 <div className='flex gap-2'>
                   <Button variant='outline' onClick={() => setStep(2)}>
