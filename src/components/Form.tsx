@@ -47,7 +47,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { submitTimesheet } from '@/utils/apiCalls';
+import { createTimesheetJob, getJobStatus } from '@/utils/apiCalls';
 import {
   isValidDatesList,
   sanitizeAccount,
@@ -71,11 +71,18 @@ const Step1Schema = z.object({
 const JIRA_TICKET_REGEX = /^[A-Z0-9]+-\d+$/;
 const TicketSchema = z.object({
   id: z.string().optional().default(''),
-  typeOfWork: z.enum(['Create', 'Review', 'Study', 'Correct', 'Translate']),
+  typeOfWork: z.enum([
+    'Create',
+    'Review',
+    'Study',
+    'Correct',
+    'Translate',
+    'Test',
+  ]),
   description: z.string().min(1, 'Description is required').max(1000),
   timeSpend: z
     .number()
-    .gt(0, 'Time must be greater than 0')
+    .min(0.01, 'Minimum 0.01 hours')
     .max(8, 'Max 8 hours')
     .refine(v => /^\d+(\.\d{1,2})?$/.test(String(v)), {
       message: 'Max 2 decimal places',
@@ -131,7 +138,7 @@ function zodToFieldErrors(err: unknown, defaultKey?: string) {
 
 interface Ticket {
   id: string;
-  typeOfWork: 'Create' | 'Review' | 'Study' | 'Correct' | 'Translate';
+  typeOfWork: 'Create' | 'Review' | 'Study' | 'Correct' | 'Translate' | 'Test';
   description: string;
   timeSpend: number; // hours
   ticketId: string;
@@ -174,6 +181,12 @@ const TYPE_OF_WORK_OPTIONS: Array<{
     icon: <Languages className='h-4 w-4 text-muted-foreground' />,
     badgeClass: 'bg-purple-200 text-black',
   },
+  {
+    value: 'Test',
+    label: 'Test',
+    icon: <CheckCircle className='h-4 w-4 text-muted-foreground' />,
+    badgeClass: 'bg-blue-200 text-black',
+  },
 ];
 
 const workTypeMeta = TYPE_OF_WORK_OPTIONS.reduce<
@@ -200,6 +213,15 @@ const Form: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [hoursError, setHoursError] = useState<string>('');
+  // Job tracking state
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState(0);
+  const [jobTotal, setJobTotal] = useState(0);
+  const [jobProcessed, setJobProcessed] = useState(0);
+  const [jobFailed, setJobFailed] = useState(0);
+  const [jobStatus, setJobStatus] = useState<
+    'in-progress' | 'completed' | 'failed' | null
+  >(null);
   // success message is shown via dialog and success screen
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState('');
@@ -210,6 +232,52 @@ const Form: React.FC = () => {
     setDialogMessage(message);
     setShowDialog(true);
   };
+
+  // Poll job status
+  const pollJobStatus = React.useCallback(async (currentJobId: string) => {
+    try {
+      const status = await getJobStatus(currentJobId);
+      setJobProgress(status.progress);
+      setJobProcessed(status.processed);
+      setJobFailed(status.failed);
+      setJobTotal(status.total);
+      setJobStatus(status.status);
+
+      if (status.status === 'completed') {
+        showMessageDialog('Success', 'All timesheets submitted successfully!');
+        setStep(4);
+        return true; // Stop polling
+      } else if (status.status === 'failed') {
+        const errorMsg =
+          status.failed > 0
+            ? `Job completed with ${status.failed} failed tasks. Check the details for more information.`
+            : 'Job failed. Please try again.';
+        toast.error(errorMsg);
+        setStep(4);
+        return true; // Stop polling
+      }
+      return false; // Continue polling
+    } catch (error) {
+      console.error('Error polling job status:', error);
+      return false;
+    }
+  }, []);
+
+  // Start polling when job is created
+  React.useEffect(() => {
+    if (!jobId || jobStatus === 'completed' || jobStatus === 'failed') {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      const shouldStop = await pollJobStatus(jobId);
+      if (shouldStop) {
+        clearInterval(interval);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [jobId, jobStatus, pollJobStatus]);
 
   const handleAddTicket = () => {
     setHoursError('');
@@ -313,21 +381,28 @@ const Form: React.FC = () => {
 
       SubmitPayloadSchema.parse(payload);
 
-      // Submit timesheet with tickets
-      await submitTimesheet({
-        username: payload.username,
+      // Create job with async processing
+      const jobResponse = await createTimesheetJob({
+        username: payload.username.trim(),
         token: payload.token,
         dates: payload.dates,
         tickets: payload.tickets.map(t => ({
           typeOfWork: t.typeOfWork,
-          description: t.description,
+          description: t.description.trim(),
           timeSpend: t.timeSpend,
-          ticketId: t.ticketId,
+          ticketId: t.ticketId.trim(),
         })),
       });
 
-      showMessageDialog('Success', 'Timesheet submitted successfully!');
-      setStep(4);
+      // Initialize job tracking
+      setJobId(jobResponse.jobId);
+      setJobTotal(jobResponse.total);
+      setJobProcessed(0);
+      setJobFailed(0);
+      setJobProgress(0);
+      setJobStatus('in-progress');
+
+      toast.success('Job created! Processing your timesheets...');
     } catch (err) {
       setFieldErrors(prev => ({ ...prev, ...zodToFieldErrors(err) }));
       const message = err instanceof Error ? err.message : 'Submission failed.';
@@ -583,8 +658,9 @@ const Form: React.FC = () => {
                   </Label>
                   <Input
                     type='number'
-                    step='0.01'
+                    step='0.1'
                     min='0.01'
+                    max='8'
                     value={currentTicket.timeSpend}
                     aria-invalid={fieldErrors.timeSpend ? true : undefined}
                     onChange={e => {
@@ -769,6 +845,40 @@ const Form: React.FC = () => {
         {/* Flow 3: Review (and submit) */}
         {step === 3 && (
           <div className='space-y-6'>
+            {/* Show progress bar if job is in progress */}
+            {jobStatus === 'in-progress' && jobId && (
+              <div className='bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3'>
+                <div className='flex items-center justify-between'>
+                  <h3 className='font-semibold text-blue-900'>
+                    Processing Timesheets
+                  </h3>
+                  <span className='text-sm font-medium text-blue-700'>
+                    {jobProgress}%
+                  </span>
+                </div>
+                <div className='w-full bg-blue-200 rounded-full h-2.5'>
+                  <div
+                    className='bg-blue-600 h-2.5 rounded-full transition-all duration-300'
+                    style={{ width: `${jobProgress}%` }}
+                  />
+                </div>
+                <div className='flex justify-between text-sm text-blue-700'>
+                  <span>
+                    Processed: {jobProcessed} / {jobTotal}
+                  </span>
+                  {jobFailed > 0 && (
+                    <span className='text-red-600 font-medium'>
+                      Failed: {jobFailed}
+                    </span>
+                  )}
+                </div>
+                <p className='text-sm text-blue-600'>
+                  Please wait while we submit your timesheets. This may take a
+                  few moments...
+                </p>
+              </div>
+            )}
+
             <div className='space-y-1'>
               <Label className='font-semibold'>
                 Your Worklog Dates (
@@ -841,15 +951,27 @@ const Form: React.FC = () => {
                   )}
                 </div>
                 <div className='flex gap-2'>
-                  <Button variant='outline' onClick={() => setStep(2)}>
+                  <Button
+                    variant='outline'
+                    onClick={() => setStep(2)}
+                    disabled={jobStatus === 'in-progress'}
+                  >
                     Back
                   </Button>
                   <Button
                     className='w-40'
-                    disabled={tickets.length === 0 || isSubmitting}
+                    disabled={
+                      tickets.length === 0 ||
+                      isSubmitting ||
+                      jobStatus === 'in-progress'
+                    }
                     onClick={() => handleSubmit()}
                   >
-                    {isSubmitting ? 'Submitting...' : 'Submit'}
+                    {isSubmitting
+                      ? 'Submitting...'
+                      : jobStatus === 'in-progress'
+                        ? 'Processing...'
+                        : 'Submit'}
                   </Button>
                 </div>
               </div>
@@ -862,15 +984,32 @@ const Form: React.FC = () => {
           <div className='flex flex-col items-center justify-center py-16'>
             <CircleCheckBig className='w-24 h-24' />
             <br />
-            <p className='text-lg font-medium'>Successfully Added !</p>
+            <p className='text-lg font-medium'>Summary</p>
+            {jobTotal > 0 && (
+              <div className='mt-4 text-center space-y-2'>
+                <p className='text-sm text-muted-foreground'>
+                  Processed {jobProcessed} out of {jobTotal} tasks
+                </p>
+                {jobFailed > 0 && (
+                  <p className='text-sm text-red-600 font-medium'>
+                    {jobFailed} tasks failed. Please check and retry if needed.
+                  </p>
+                )}
+              </div>
+            )}
             <div className='mt-6'>
               <Button
                 onClick={() => {
-                  setUsername('');
-                  setToken('');
+                  // Keep username, token, and tickets for convenience
+                  // Only clear dates and job status
                   setDates('');
-                  setTickets([]);
-                  setStep(1);
+                  setJobId(null);
+                  setJobProgress(0);
+                  setJobTotal(0);
+                  setJobProcessed(0);
+                  setJobFailed(0);
+                  setJobStatus(null);
+                  setStep(2); // Go directly to step 2 since we have username/token
                 }}
               >
                 Add more

@@ -1,11 +1,8 @@
 // Simple client-side sanitization helpers
 
-// Remove HTML tags, collapse whitespace, and trim
 export function sanitizeBasic(input: string, maxLen = 512): string {
   if (!input) return '';
-  const noTags = input.replace(/<[^>]*>/g, '');
-  const collapsed = noTags.replace(/\s+/g, ' ').trim();
-  return collapsed.slice(0, maxLen);
+  return input.slice(0, maxLen);
 }
 
 // Allow only numbers, letters, '/', ',', '-', and spaces (for dates list)
@@ -16,7 +13,6 @@ export function sanitizeDates(input: string, maxLen = 2000): string {
   return filtered
     .replace(/\s*,\s*/g, ', ') // single space after commas
     .replace(/\s+/g, ' ')
-    .trim()
     .slice(0, maxLen);
 }
 
@@ -62,10 +58,15 @@ export function sanitizeHours(
   min = 0.01,
   max = 8
 ): number {
-  const n = typeof input === 'number' ? input : parseFloat(input);
-  if (Number.isNaN(n)) return min;
-  let v = Math.min(Math.max(n, min), max);
-  // restrict to 2 decimal places without unintended rounding issues
-  v = Math.trunc(v * 100) / 100;
-  return v;
+  const num = typeof input === 'string' ? parseFloat(input) : input;
+
+  if (isNaN(num) || num < min) {
+    return min;
+  }
+
+  if (num > max) {
+    return max;
+  }
+
+  return Math.round(num * 100) / 100;
 }
