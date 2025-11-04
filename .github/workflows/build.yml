@@ -1,12 +1,7 @@
 name: Build Jira Timesheet Next.js Project
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build:
