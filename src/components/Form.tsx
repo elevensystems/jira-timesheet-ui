@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/sonner';
+import { Spinner } from '@/components/ui/spinner';
 import {
   Table,
   TableBody,
@@ -209,6 +210,7 @@ const Form: React.FC = () => {
   const [username, setUsername] = useState('');
   const [token, setToken] = useState('');
   const [dates, setDates] = useState('');
+  const [jiraInstance, setJiraInstance] = useState<'jira9' | 'jiradc'>('jira9');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [currentTicket, setCurrentTicket] = useState<Ticket>({
     id: '',
@@ -384,6 +386,7 @@ const Form: React.FC = () => {
         token: sanitizeToken(token),
         dates: safeDates,
         tickets: sanitizedTickets,
+        jiraInstance,
       };
 
       SubmitPayloadSchema.parse(payload);
@@ -393,6 +396,7 @@ const Form: React.FC = () => {
         username: payload.username.trim(),
         token: payload.token,
         dates: payload.dates,
+        jiraInstance: payload.jiraInstance,
         tickets: payload.tickets.map(t => ({
           typeOfWork: t.typeOfWork,
           description: t.description.trim(),
@@ -520,10 +524,27 @@ const Form: React.FC = () => {
                 </p>
               )}
             </div>
-            <div className='flex justify-end'>
-              <Button type='submit' className='w-40'>
+            <div className='flex justify-between items-center'>
+              <div className='flex items-center gap-2'>
+                <Label className='font-semibold'>Jira System</Label>
+                <Select
+                  value={jiraInstance}
+                  onValueChange={v => setJiraInstance(v as 'jira9' | 'jiradc')}
+                >
+                  <SelectTrigger className='w-[140px]'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value='jira9'>jira9</SelectItem>
+                      <SelectItem value='jiradc'>jiradc</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type='submit'>
                 Next
-                <ChevronRight className='ml-2 h-4 w-4' />
+                <ChevronRight />
               </Button>
             </div>
           </form>
@@ -730,24 +751,19 @@ const Form: React.FC = () => {
             </div>
             <div className='flex justify-center'>
               <Button
-                className='hover:bg-green-200'
-                type='button'
-                variant='secondary'
+                aria-label='Add ticket'
+                variant='outline'
                 onClick={handleAddTicket}
               >
-                <Plus className='mr-1 h-4 w-4' />
+                <Plus />
                 Add ticket
               </Button>
             </div>
 
             {tickets.length === 0 && (
               <div className='flex justify-end'>
-                <Button
-                  className='w-40'
-                  variant='outline'
-                  onClick={() => setStep(1)}
-                >
-                  <ChevronLeft className='mr-2 h-4 w-4' />
+                <Button variant='outline' onClick={() => setStep(1)}>
+                  <ChevronLeft />
                   Back
                 </Button>
               </div>
@@ -828,12 +844,8 @@ const Form: React.FC = () => {
                     )}
                   </div>
                   <div className='flex gap-2'>
-                    <Button
-                      className='w-40'
-                      variant='outline'
-                      onClick={() => setStep(1)}
-                    >
-                      <ChevronLeft className='mr-2 h-4 w-4' />
+                    <Button variant='outline' onClick={() => setStep(1)}>
+                      <ChevronLeft />
                       Back
                     </Button>
                     <Button
@@ -856,10 +868,9 @@ const Form: React.FC = () => {
                           }));
                         }
                       }}
-                      className='w-40'
                     >
                       Review
-                      <CheckCircle className='ml-2 h-4 w-4' />
+                      <CheckCircle />
                     </Button>
                   </div>
                 </div>
@@ -982,16 +993,14 @@ const Form: React.FC = () => {
                 </div>
                 <div className='flex gap-2'>
                   <Button
-                    className='w-40'
                     variant='outline'
                     onClick={() => setStep(2)}
                     disabled={jobStatus === 'in-progress'}
                   >
-                    <ChevronLeft className='mr-2 h-4 w-4' />
+                    <ChevronLeft />
                     Back
                   </Button>
                   <Button
-                    className='w-40'
                     disabled={
                       tickets.length === 0 ||
                       isSubmitting ||
@@ -1000,13 +1009,19 @@ const Form: React.FC = () => {
                     onClick={() => handleSubmit()}
                   >
                     {isSubmitting ? (
-                      'Submitting...'
+                      <>
+                        <Spinner />
+                        Submitting...
+                      </>
                     ) : jobStatus === 'in-progress' ? (
-                      'Processing...'
+                      <>
+                        <Spinner />
+                        Processing...
+                      </>
                     ) : (
                       <>
                         Submit
-                        <CheckCheck className='ml-2 h-4 w-4' />
+                        <CheckCheck />
                       </>
                     )}
                   </Button>
@@ -1049,7 +1064,7 @@ const Form: React.FC = () => {
                   setStep(2); // Go directly to step 2 since we have username/token
                 }}
               >
-                <CirclePlus className='mr-2 h-4 w-4' />
+                <CirclePlus />
                 Add more
               </Button>
             </div>
