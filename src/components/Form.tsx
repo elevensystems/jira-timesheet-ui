@@ -163,37 +163,40 @@ const TYPE_OF_WORK_OPTIONS: Array<{
     value: 'Create',
     label: 'Create',
     icon: <Pencil className='h-4 w-4 text-muted-foreground' />,
-    badgeClass: 'bg-green-200 text-black',
+    badgeClass: 'bg-green-200 dark:bg-green-900 text-black dark:text-green-100',
   },
   {
     value: 'Review',
     label: 'Review',
     icon: <Eye className='h-4 w-4 text-muted-foreground' />,
-    badgeClass: 'bg-red-200 text-black',
+    badgeClass: 'bg-red-200 dark:bg-red-900 text-black dark:text-red-100',
   },
   {
     value: 'Study',
     label: 'Study',
     icon: <BookOpen className='h-4 w-4 text-muted-foreground' />,
-    badgeClass: 'bg-indigo-200 text-black',
+    badgeClass:
+      'bg-indigo-200 dark:bg-indigo-900 text-black dark:text-indigo-100',
   },
   {
     value: 'Correct',
     label: 'Correct',
     icon: <SquareCheckBig className='h-4 w-4 text-muted-foreground' />,
-    badgeClass: 'bg-yellow-200 text-black',
+    badgeClass:
+      'bg-yellow-200 dark:bg-yellow-900 text-black dark:text-yellow-100',
   },
   {
     value: 'Translate',
     label: 'Translate',
     icon: <Languages className='h-4 w-4 text-muted-foreground' />,
-    badgeClass: 'bg-purple-200 text-black',
+    badgeClass:
+      'bg-purple-200 dark:bg-purple-900 text-black dark:text-purple-100',
   },
   {
     value: 'Test',
     label: 'Test',
     icon: <FlaskConical className='h-4 w-4 text-muted-foreground' />,
-    badgeClass: 'bg-blue-200 text-black',
+    badgeClass: 'bg-blue-200 dark:bg-blue-900 text-black dark:text-blue-100',
   },
 ];
 
@@ -231,6 +234,9 @@ const Form: React.FC = () => {
   const [jobStatus, setJobStatus] = useState<
     'in-progress' | 'completed' | 'failed' | null
   >(null);
+  const [jobErrors, setJobErrors] = useState<
+    Array<{ date: string; error: string; ticketId: string }>
+  >([]);
   // success message is shown via dialog and success screen
   const [showDialog, setShowDialog] = useState(false);
   const [dialogMessage, setDialogMessage] = useState('');
@@ -251,6 +257,11 @@ const Form: React.FC = () => {
       setJobFailed(status.failed);
       setJobTotal(status.total);
       setJobStatus(status.status);
+
+      // Capture errors if present
+      if (status.errors && status.errors.length > 0) {
+        setJobErrors(status.errors);
+      }
 
       if (status.status === 'completed') {
         showMessageDialog('Success', 'All timesheets submitted successfully!');
@@ -777,7 +788,7 @@ const Form: React.FC = () => {
                   <h3 className='font-semibold mb-3'>
                     Added ticket ({tickets.length})
                   </h3>
-                  <div className='border rounded-lg'>
+                  <div className='border rounded-lg overflow-hidden'>
                     <Table>
                       <TableHeader className='bg-muted'>
                         <TableRow>
@@ -819,7 +830,7 @@ const Form: React.FC = () => {
                             </TableCell>
                             <TableCell className='text-right'>
                               <Button
-                                className='hover:bg-red-200'
+                                className='hover:bg-red-200 dark:hover:bg-red-900'
                                 variant='ghost'
                                 size='icon'
                                 onClick={() => handleRemoveTicket(ticket.id)}
@@ -928,7 +939,7 @@ const Form: React.FC = () => {
               />
             </div>
             <div>
-              <div className='border rounded-lg'>
+              <div className='border rounded-lg overflow-hidden'>
                 <Table>
                   <TableHeader className='bg-muted'>
                     <TableRow>
@@ -968,7 +979,7 @@ const Form: React.FC = () => {
                         </TableCell>
                         <TableCell className='text-right'>
                           <Button
-                            className='hover:bg-red-200'
+                            className='hover:bg-red-200 dark:hover:bg-red-900'
                             variant='ghost'
                             size='icon'
                             onClick={() => handleRemoveTicket(ticket.id)}
@@ -1049,6 +1060,44 @@ const Form: React.FC = () => {
                 )}
               </div>
             )}
+
+            {/* Error table when job failed */}
+            {jobStatus === 'failed' && jobErrors.length > 0 && (
+              <div className='mt-6 w-full max-w-3xl'>
+                <h3 className='font-semibold text-lg mb-3 text-destructive'>
+                  Failed Tasks ({jobErrors.length})
+                </h3>
+                <div className='border border-red-200 dark:border-red-800 rounded-lg overflow-hidden'>
+                  <Table>
+                    <TableHeader className='bg-red-50 dark:bg-red-950'>
+                      <TableRow>
+                        <TableHead className='font-semibold'>Date</TableHead>
+                        <TableHead className='font-semibold'>
+                          Ticket ID
+                        </TableHead>
+                        <TableHead className='font-semibold'>Error</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {jobErrors.map((err, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className='font-medium'>
+                            {err.date}
+                          </TableCell>
+                          <TableCell className='font-medium'>
+                            {err.ticketId}
+                          </TableCell>
+                          <TableCell className='text-red-600 dark:text-red-400'>
+                            {err.error}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
             <div className='mt-6'>
               <Button
                 onClick={() => {
@@ -1061,6 +1110,7 @@ const Form: React.FC = () => {
                   setJobProcessed(0);
                   setJobFailed(0);
                   setJobStatus(null);
+                  setJobErrors([]);
                   setStep(2); // Go directly to step 2 since we have username/token
                 }}
               >
