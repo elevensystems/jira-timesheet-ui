@@ -6,7 +6,7 @@ export function sanitizeBasic(input: string, maxLen = 512): string {
 }
 
 // Allow only numbers, letters, '/', ',', '-', and spaces (for dates list)
-export function sanitizeDates(input: string, maxLen = 2000): string {
+export function sanitizeDates(input: string, maxLen = 10000): string {
   if (!input) return '';
   const filtered = input.replace(/[^0-9A-Za-z/,\-\s]/g, '');
   // normalize comma spacing

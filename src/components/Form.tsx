@@ -332,7 +332,7 @@ const Form: React.FC = () => {
       typeOfWork: 'Create',
       description: '',
       timeSpend: 0.25,
-      ticketId: '',
+      ticketId: currentTicket.ticketId, // Keep the Ticket ID
     });
   };
 
@@ -551,7 +551,7 @@ const Form: React.FC = () => {
                 <li>Copy your missing work log dates</li>
               </ol>
               <textarea
-                className={`flex h-20 w-full rounded-md border bg-background px-3 py-2 text-sm ${fieldErrors.dates ? 'border-destructive' : 'border-input'}`}
+                className={`flex min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm resize-y ${fieldErrors.dates ? 'border-destructive' : 'border-input'}`}
                 placeholder='E.g., 20/Aug/25, 21/Aug/25, 22/Aug/25, 25/Aug/25'
                 value={dates}
                 aria-invalid={fieldErrors.dates ? true : undefined}
