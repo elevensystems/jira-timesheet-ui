@@ -76,8 +76,9 @@ export async function createTimesheetJob(
 
     // Prepare request body
     const requestBody = {
-      username: data.username,
       dates: data.dates,
+      jiraInstance: data.jiraInstance,
+      username: data.username,
       tickets: data.tickets?.map(t => ({
         ticketId: t.ticketId,
         timeSpend: String(t.timeSpend), // Send as string to match backend expectations
