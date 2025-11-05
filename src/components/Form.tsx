@@ -4,14 +4,21 @@ import React, { useMemo, useState } from 'react';
 
 import {
   BookOpen,
+  CheckCheck,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   CircleCheckBig,
+  CirclePlus,
   Eye,
-  FileText,
+  FlaskConical,
   Languages,
   Pencil,
+  Plus,
+  SquareCheckBig,
+  Tags,
   Trash2,
-  Undo2,
+  UserRoundCog,
 } from 'lucide-react';
 import { ZodError, z } from 'zod';
 
@@ -172,7 +179,7 @@ const TYPE_OF_WORK_OPTIONS: Array<{
   {
     value: 'Correct',
     label: 'Correct',
-    icon: <Undo2 className='h-4 w-4 text-muted-foreground' />,
+    icon: <SquareCheckBig className='h-4 w-4 text-muted-foreground' />,
     badgeClass: 'bg-yellow-200 text-black',
   },
   {
@@ -184,7 +191,7 @@ const TYPE_OF_WORK_OPTIONS: Array<{
   {
     value: 'Test',
     label: 'Test',
-    icon: <CheckCircle className='h-4 w-4 text-muted-foreground' />,
+    icon: <FlaskConical className='h-4 w-4 text-muted-foreground' />,
     badgeClass: 'bg-blue-200 text-black',
   },
 ];
@@ -423,10 +430,10 @@ const Form: React.FC = () => {
         <Tabs value={step.toString()} className='w-full'>
           <TabsList className='grid w-full grid-cols-3'>
             <TabsTrigger value='1'>
-              <Pencil className='mr-2 h-4 w-4' /> Setup
+              <UserRoundCog className='mr-2 h-4 w-4' /> Setup
             </TabsTrigger>
             <TabsTrigger value='2'>
-              <FileText className='mr-2 h-4 w-4' /> Log Ticket
+              <Tags className='mr-2 h-4 w-4' /> Log Ticket
             </TabsTrigger>
             <TabsTrigger value='3'>
               <CheckCircle className='mr-2 h-4 w-4' /> Review
@@ -483,7 +490,7 @@ const Form: React.FC = () => {
                 Click{' '}
                 <a
                   className='underline text-blue-600'
-                  href='https://id.atlassian.com/manage-profile/security/api-tokens'
+                  href='https://insight.fsoft.com.vn/jira9/secure/ViewProfile.jspa'
                   target='_blank'
                   rel='noreferrer'
                 >
@@ -516,6 +523,7 @@ const Form: React.FC = () => {
             <div className='flex justify-end'>
               <Button type='submit' className='w-40'>
                 Next
+                <ChevronRight className='ml-2 h-4 w-4' />
               </Button>
             </div>
           </form>
@@ -727,13 +735,19 @@ const Form: React.FC = () => {
                 variant='secondary'
                 onClick={handleAddTicket}
               >
-                + Add ticket
+                <Plus className='mr-1 h-4 w-4' />
+                Add ticket
               </Button>
             </div>
 
             {tickets.length === 0 && (
               <div className='flex justify-end'>
-                <Button variant='outline' onClick={() => setStep(1)}>
+                <Button
+                  className='w-40'
+                  variant='outline'
+                  onClick={() => setStep(1)}
+                >
+                  <ChevronLeft className='mr-2 h-4 w-4' />
                   Back
                 </Button>
               </div>
@@ -751,10 +765,16 @@ const Form: React.FC = () => {
                     <Table>
                       <TableHeader className='bg-muted'>
                         <TableRow>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Ticket ID</TableHead>
-                          <TableHead>Description</TableHead>
-                          <TableHead className='text-right'>
+                          <TableHead className='font-semibold'>
+                            Type Of Work
+                          </TableHead>
+                          <TableHead className='font-semibold'>
+                            Ticket ID
+                          </TableHead>
+                          <TableHead className='font-semibold'>
+                            Description
+                          </TableHead>
+                          <TableHead className='text-right font-semibold'>
                             Time spent (hrs)
                           </TableHead>
                           <TableHead></TableHead>
@@ -808,7 +828,12 @@ const Form: React.FC = () => {
                     )}
                   </div>
                   <div className='flex gap-2'>
-                    <Button variant='outline' onClick={() => setStep(1)}>
+                    <Button
+                      className='w-40'
+                      variant='outline'
+                      onClick={() => setStep(1)}
+                    >
+                      <ChevronLeft className='mr-2 h-4 w-4' />
                       Back
                     </Button>
                     <Button
@@ -834,6 +859,7 @@ const Form: React.FC = () => {
                       className='w-40'
                     >
                       Review
+                      <CheckCircle className='ml-2 h-4 w-4' />
                     </Button>
                   </div>
                 </div>
@@ -895,10 +921,14 @@ const Form: React.FC = () => {
                 <Table>
                   <TableHeader className='bg-muted'>
                     <TableRow>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Ticket ID</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead className='text-right'>
+                      <TableHead className='font-semibold'>
+                        Type Of Work
+                      </TableHead>
+                      <TableHead className='font-semibold'>Ticket ID</TableHead>
+                      <TableHead className='font-semibold'>
+                        Description
+                      </TableHead>
+                      <TableHead className='text-right font-semibold'>
                         Time spent (hrs)
                       </TableHead>
                       <TableHead></TableHead>
@@ -952,10 +982,12 @@ const Form: React.FC = () => {
                 </div>
                 <div className='flex gap-2'>
                   <Button
+                    className='w-40'
                     variant='outline'
                     onClick={() => setStep(2)}
                     disabled={jobStatus === 'in-progress'}
                   >
+                    <ChevronLeft className='mr-2 h-4 w-4' />
                     Back
                   </Button>
                   <Button
@@ -967,11 +999,16 @@ const Form: React.FC = () => {
                     }
                     onClick={() => handleSubmit()}
                   >
-                    {isSubmitting
-                      ? 'Submitting...'
-                      : jobStatus === 'in-progress'
-                        ? 'Processing...'
-                        : 'Submit'}
+                    {isSubmitting ? (
+                      'Submitting...'
+                    ) : jobStatus === 'in-progress' ? (
+                      'Processing...'
+                    ) : (
+                      <>
+                        Submit
+                        <CheckCheck className='ml-2 h-4 w-4' />
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>
@@ -1012,6 +1049,7 @@ const Form: React.FC = () => {
                   setStep(2); // Go directly to step 2 since we have username/token
                 }}
               >
+                <CirclePlus className='mr-2 h-4 w-4' />
                 Add more
               </Button>
             </div>
